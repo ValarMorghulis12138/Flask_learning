@@ -356,3 +356,142 @@ data-toggle="collapse" data-target=".navbar-collapse">
 </div>
 {% endblock %}
 ```
+
+## 静态文件
+默认设置下，Flask在应用根目录中名为static的子目录中寻找静态文件。如果需要，可在static文件夹中使用子文件夹存放文件。服务器收到映射到static路由上的URL后，生成的响应包含文件系统中对应文件的内容。
+
+下例为在应用的基模板中引入favicon.ico图标。
+```
+{% block head %}
+{{ super() }}
+<link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}"
+    type="image/x-icon">
+<link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}"
+    type="image/x-icon">
+{% endblock %}
+```
+这个图标的声明插入head 区块的末尾。注意，为了保留基模板中这个区块里的原始内容，
+我们调用了super()。
+
+## 使用Flask-Moment本地化日期和时间
+有一个使用JavaScript 开发的优秀客户端开源库，名为Moment.js，它可以在浏览器中渲染
+日期和时间。Flask-Moment 是一个Flask 扩展，能简化把Moment.js 集成到Jinja2 模板中
+的过程。Flask-Moment 使用pip 安装：
+```
+pip install flask-moment
+```
+这个扩展的初始化方法与Flask-Bootstrap 类似:
+```
+from flask_moment import Moment
+moment = Moment(app)
+```
+
+在基模板的scrits块引入这个库，同时保留基模块中定义的原始内容：
+```
+{% block scripts %}
+{{ super() }}
+{{ moment.include_moment() }}
+{% endblock %}
+```
+
+为了处理时间戳，Flask-Moment 向模板开放了moment 对象。把变量
+current_time 传入模板进行渲染:
+```
+from datetime import datetime
+
+@app.route('/')
+def index():
+    return render_template('index.html', current_time=datetime.utcnow())
+```
+在index.html中使用Flask-Moment 渲染时间戳：
+```
+<p>The local date and time is {{ moment(current_time).format('LLL') }}.</p>
+<p>That was {{ moment(current_time).fromNow(refresh=True) }}</p>
+```
+format('LLL') 函数根据客户端计算机中的时区和区域设置渲染日期和时间。参数决定了
+渲染的方式，从'L' 到'LLLL' 分别对应不同的复杂度。format() 函数还可接受很多自定义
+的格式说明符。
+第二行中的fromNow() 渲染相对时间戳，而且会随着时间的推移自动刷新显示的时间。这
+个时间戳最开始显示为“a few seconds ago”，但设定refresh=True 参数后，其内容会随着
+时间的推移而更新。如果一直待在这个页面，几分钟后会看到显示的文本变成“a minute
+ago”“2 minutes ago”，等等。
+
+
+Flask-Moment 实现了Moment.js 的format()、fromNow()、fromTime()、calendar()、valueOf()
+和unix() 等方法。请查阅Moment.js 的文档（http://momentjs.com/docs/#/displaying/）， 学习这个库提供的全部格式化选项。
+
+# 第四章 Web表单
+
+使用HTML 可以创建Web 表单，供用户填写信息。表单数据由Web 浏览器提交给服务
+器，这一过程通常使用POST 请求。
+
+Flask-WTF 扩展可以把处理Web 表单的过程变成一种愉悦的体验。这个扩展对独立的
+WTForms 包进行了包装，方便集成到Flask 应用中。
+Flask-WTF 及其依赖可使用pip 安装：
+(venv) $ pip install flask-wtf
+
+## 4.1 配置
+<font color=red>与其他多数扩展不同，Flask-WTF 无须在应用层初始化，但是它要求应用配置一个密钥。
+密钥是一个由随机字符构成的唯一字符串，通过加密或签名以不同的方式提升应用的安全
+性。Flask 使用这个密钥保护用户会话，以防被篡改。每个应用的密钥应该不同，而且不
+能让任何人知道。示例4-1 展示如何在Flask 应用中配置密钥。</font>
+```
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'hard to guess string'
+```
+
+app.config 字典可用于存储Flask、扩展和应用自身的配置变量。使用标准的字典句法就
+能把配置添加到app.config 对象中。这个对象还提供了一些方法，可以从文件或环境中导
+入配置。Flask-WTF 之所以要求应用配置一个密钥，是为了防止表单遭到跨站请求伪造（CSRF，cross-site request forgery）攻击。恶意网站把请求发送到被攻击者已登录的其他网站时，就会引发CSRF 攻击。Flask-WTF 为所有表单生成安全令牌，存储在用户会话中。令牌是一种加密签名，根据密钥生成。为了增强安全性，密钥不应该直接写入源码，而要保存在环境变量中。
+
+## 4.2 表单类
+使用Flask-WTF 时，在服务器端，每个Web 表单都由一个继承自FlaskForm 的类表示。这
+个类定义表单中的一组字段，每个字段都用对象表示。字段对象可附属一个或多个验证函
+数。验证函数用于验证用户提交的数据是否有效。
+示例4-2 是一个简单的Web 表单，包含一个文本字段和一个提交按钮。
+```
+from flask_wtf import FlaskForm
+from wtforms import StringField, SubmitField
+from wtforms.validators import DataRequired
+
+class NameForm(FlaskForm):
+    name = StringField('What is your name?', validators=[DataRequired()])
+    submit = SubmitField('Submit')
+```
+在这个示例中，NameForm 表单中有一个名为name 的文本字段和一个名为submit 的提交按钮。StringField 类表示属性为type="text" 的HTML input 元素。SubmitField 类表示属性为type="submit" 的HTML input元素。字段构造函数的第一个参数是把表单渲染成HTML 时使用的标注（label）。
+StringField 构造函数中的可选参数validators 指定一个由验证函数组成的列表，在接受
+用户提交的数据之前验证数据。验证函数DataRequired() 确保提交的字段内容不为空。
+
+## 4.3 把表单渲染成HTML
+Flask-Bootstrap 扩展提供了一个高层级的
+辅助函数，可以使用Bootstrap 预定义的表单样式渲染整个Flask-WTF 表单，而这些操作
+只需一次调用即可完成。使用Flask-Bootstrap，上述表单可以用下面的方式渲染：
+```
+{% import "bootstrap/wtf.html" as wtf %}
+{{ wtf.quick_form(form) }}
+```
+
+import 指令的使用方法和普通Python 代码一样，通过它可以导入模板元素，在多个模板
+中使用。导入的bootstrap/wtf.html 文件中定义了一个使用Bootstrap 渲染Flask-WTF 表单
+对象的辅助函数。wtf.quick_form() 函数的参数为Flask-WTF 表单对象，使用Bootstrap 的
+默认样式渲染传入的表单。
+
+templates/index.html：使用Flask-WTF 和Flask-Bootstrap 渲染表单
+```
+{% extends "base.html" %}
+{% import "bootstrap/wtf.html" as wtf %}
+
+{% block title %}Flasky{% endblock %}
+
+{% block page_content %}
+<div class="page-header">
+    <h1>Hello, {% if name %}{{ name }}{% else %}Stranger{% endif %}!</h1>
+</div>
+{{ wtf.quick_form(form) }}
+{% endblock %}
+```
+模板的内容区现在有两部分。第一部分是页头，显示欢迎消息。这里用到了一个模板条
+件语句。Jinja2 的条件语句格式为{% if condition %}...{% else %}...{% endif %}。如果条件的计算结果为True，那么渲染if 和else 指令之间的内容。如果条件的计算结果
+为False，则渲染else 和endif 指令之间的内容。在这个例子中，如果定义了name 变量，
+则渲染Hello, {{ name }}!，否则渲染Hello, Stranger!。内容区的第二部分使用wtf.
+quick_form() 函数渲染NameForm 对象。
